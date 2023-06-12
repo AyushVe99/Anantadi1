@@ -1,29 +1,56 @@
-const express = require('express');
-const os = require('os');
-const fetch = require('node-fetch');
+import express from 'express';
+import aws from 'aws-sdk';
+import multer from 'multer';
+import multerS3 from 'multer-s3';
+import bodyParser from 'body-parser';
 
 const app = express();
+const port = process.env.PORT || 3000;
 
-app.use(express.static('dist'));
-app.use(express.json());
-
-app.get('/api/getUsername', (req, res) => res.send({ username: os.userInfo().username }));
-app.get('/', (req, res) => {
-  res.send('Front Page');
-});
-app.post('/api/check-auth', async (req, res) => {
-  const { login, password } = req.body.user;
-  const url = `http://localhost:3004/users?login=${login}`;
-
-    const data = await fetch(url);
-    const users = await data.json();
-    const [ user ] = users;
-    
-    if(user && user.password === password) {
-      res.json({ user: user.login });
-    } else {
-      res.status(403).end();
-    }
+// Configure AWS
+AWS.config.update({ 
+accessKeyId: 'AKIA5LURTCX2SFCBQMWK', 
+secretAccessKey: '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', 
+region: 'us-east-1', 
 });
 
-app.listen(process.env.PORT || 8000, () => console.log(`Listening on port ${process.env.PORT || 8000}!`));
+const s3 = new aws.S3();
+
+// Configure multer middleware for file uploads
+const upload = multer({
+  storage: multerS3({
+    s3: s3,
+    bucket: 'anantadiassignment',
+    acl: 'public-read',
+    key: function (request, file, cb) {
+      cb(null, Date.now().toString() + '-' + file.originalname);
+    },
+  }),
+});
+
+// Enable JSON body parsing
+app.use(bodyParser.json());
+
+// Handle video uploads
+app.post('/api/videos', upload.array('videos', 5), (req, res) => {
+  const uploadedFiles = req.files.map((file) => {
+    return {
+      filename: file.originalname,
+      location: file.location,
+      key: file.key,
+    };
+  });
+
+  res.json({ files: uploadedFiles });
+});
+
+// Handle JSON uploads
+app.post('/api/json', upload.array('json', 5), (req, res) => {
+  console.log(req.files);
+  res.json({ message: 'JSON files uploaded successfully.' });
+});
+
+// Start the server
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
